@@ -1,0 +1,99 @@
+- Make strict format checking optional by an instantiation flag [e.g. `AAMVA(strict=False)`]
+- v4: Not all optional subfields are being decoded (DCK, DDA, DDB, DDC, DDD) - [2009 p.60]
+- v5: "
+- FIXME's: check if vechilce-related fields are empty or unset to determine if the card is a DL or ID card
+- Add under 18, under 19, and under 21 boolean flags to all versions calculated from current date. v5 and later should
+  test calculated dates against DDH, DDI, and DDJ respectively, and < v4 should output these calculations in the
+  "arrival_dates" dictionary.
+- Make output accessible by instance attributes (result.header.iin) in addition to dictionary-type access (result['header']['iin'])
+
+- Change intermediary data format from a single dictionary to a structure more representative of the actual records.
+  The first record must always be DL or ID data, and subsequent records will be jurisdiction-specific. With this in
+  mind, the intermediary format should be as follows (or alternatively, flattened with an ordered dictionary):
+
+  [ 
+    { 
+      'type' : 'DL',
+      'fields' : {
+        'DAA' : '…',
+        …
+       }
+     },
+     
+     {
+       'type' : 'ZV',
+       'fields' : {
+         'ZAA' : '…',
+         …
+       }
+     }
+   ]
+   
+- Header information should be preserved in a dictionary and formatted for the final output
+
+- Final output preliminary format:
+
+  {
+    'header'  : {
+      'iin'      : nnnnnn,      # Issuer Identification Number
+      'version'  : nn,	        # AAMVA version number
+      'format'   : nn,	        # Jurisdiction version number
+      'filetype' : 'ANSI',      # 'ANSI ' per spec, but some encode 'AAMVA'
+      'type'     : 'DL'         # First subfile record type (either 'DL' or 'ID')
+    },
+    
+    # Everything here should be nicely formatted (cap. case)
+    # Any field here that is not encoded should be `None`
+    'id'      : '…',
+    'prefix'  : '…',
+    'last'    : '…',
+    'first'   : '…',
+    'middle'  : '…',
+    'suffix'  : '…',
+    'dob'     : DateTime(…),
+    'eyes'    : '…',
+    'hair'    : '…',
+    'sex'     : '…',
+    'height'  : Height(…),
+    'weight'  : Weight(…),
+    'address'  : '…',
+    'address2' : '…',
+    'city'     : '…',
+    'postcode' : '…',
+    'state'    : '…',
+    'country'  : '…',
+    'issued'   : DateTime(…),
+    'expires'  : DateTime(…),
+    'dhs_compliant' : False,
+    
+    # Optional (DL vs ID). None if type==ID or not encoded
+    'class'        : '…',
+    'restrictions' : '…',
+    'endorsements' : '…',
+    
+    # Derived data using computer local time
+    'under18'  : False,
+    'under19'  : False,
+    'under21'  : False,
+    
+    'arrival'  : {
+      'under_18_until' : DateTime(…),
+      'under_19_until' : DateTime(…),
+      'under_21_until' : DateTime(…)
+    }
+    
+    'subfiles' : {
+      'DL' : {				# Original ID fields (either 'DL' or 'ID')
+        'DCA' : '…',
+        'DCB' : '…',
+        'DCD' : '…',
+        ...
+      },
+      'ZV' : {				# Jurisdictional records, if present
+      	'ZVA' : '…',
+      	'ZVB' : '…',
+      	'ZVC' : '…',
+      	...
+      }					# Any further encoded subfiles (normally only up to 2)
+    }
+  }
