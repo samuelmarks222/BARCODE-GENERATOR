@@ -24,6 +24,8 @@ writing,  [S.B. No. 1445 applies to the state of Texas](http://www.legis.state.t
 
 ## Web demo ##
 
+Live demo: https://barcode-generator-umber-sigma.vercel.app
+
 The repository includes a small Vercel deployment:
 
 - `public/index.html` &mdash; browser UI with sample cards and a JSON viewer.
