@@ -22,6 +22,23 @@ writing,  [S.B. No. 1445 applies to the state of Texas](http://www.legis.state.t
 .
 
 
+## Web demo ##
+
+The repository includes a small Vercel deployment:
+
+- `public/index.html` &mdash; browser UI with sample cards and a JSON viewer.
+- `api/decode.py` &mdash; Python serverless function exposing `POST /api/decode`.
+
+Request:
+
+```json
+{ "data": "@\n\u001e\rANSI ...", "format": "auto" }
+```
+
+`format` may be `auto`, `barcode`, or `magstripe`. The response contains a
+`decoded` object; dates are ISO strings, and height/weight values include a
+human-readable `display` field.
+
 ## License ##
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

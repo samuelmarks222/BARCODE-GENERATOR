@@ -7,3 +7,6 @@ venv/
 aamva.egg-info/
 build/
 dist/
+.vercel/
+.env
+.env.*

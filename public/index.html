@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>py-aamva decoder</title>
+<meta name="description" content="Decode AAMVA-compliant driver's licenses and ID cards from PDF417 barcode or magstripe data.">
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #131a2e;
+    --panel-2: #0f1626;
+    --border: #26304a;
+    --text: #e8ecf7;
+    --muted: #96a1bd;
+    --accent: #6ea8fe;
+    --accent-2: #8b5cf6;
+    --green: #34d399;
+    --red: #fb7185;
+    --radius: 14px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(139, 92, 246, .20), transparent 60%),
+      radial-gradient(700px 400px at -10% 0%, rgba(110, 168, 254, .18), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 48px 20px 72px; }
+  header { text-align: center; margin-bottom: 32px; }
+  .badge {
+    display: inline-block; padding: 4px 12px; margin-bottom: 14px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: rgba(110, 168, 254, .08); color: var(--accent);
+    font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 42px); letter-spacing: -.02em; }
+  header p { margin: 0 auto; max-width: 640px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 1.05fr .95fr; } }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
+  }
+  .card h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
+  textarea {
+    width: 100%; min-height: 220px; resize: vertical;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(110,168,254,.15); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  label { color: var(--muted); font-size: 13px; }
+  select, button {
+    font: inherit; color: var(--text); border-radius: 9px;
+    border: 1px solid var(--border); background: var(--panel-2);
+    padding: 9px 13px; cursor: pointer; transition: .16s ease;
+  }
+  select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: 0; color: #08101f; font-weight: 700; padding: 10px 20px;
+  }
+  button.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  button.primary:disabled { opacity: .6; cursor: progress; transform: none; }
+  button.ghost:hover, select:hover { border-color: #3a486b; background: #17203a; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .samples button { font-size: 12.5px; padding: 6px 11px; color: var(--muted); }
+  .samples button:hover { color: var(--text); }
+  .hint { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; }
+  .hint code { font-family: var(--mono); color: #c4cdf0; }
+  .error {
+    display: none; margin-top: 14px; padding: 12px 14px;
+    border: 1px solid rgba(251,113,133,.35); border-radius: 10px;
+    background: rgba(251,113,133,.08); color: var(--red); font-size: 13.5px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .result { display: none; }
+  .result-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .result-head h2 { margin: 0; }
+  .result-head button { font-size: 12px; padding: 6px 10px; color: var(--muted); }
+  .group { margin-bottom: 18px; }
+  .group:last-child { margin-bottom: 0; }
+  .group h3 { margin: 0 0 8px; font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .09em; }
+  dl { margin: 0; display: grid; grid-template-columns: minmax(120px, 38%) 1fr; gap: 1px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  dt, dd { margin: 0; padding: 9px 12px; background: var(--panel-2); font-size: 13.5px; word-break: break-word; }
+  dt { color: var(--muted); border-right: 1px solid var(--border); }
+  dd { font-family: var(--mono); font-size: 13px; }
+  dd.empty { color: #596381; }
+  details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  pre {
+    margin: 12px 0 0; padding: 14px; max-height: 320px; overflow: auto;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #c7d2ea;
+  }
+  footer { margin-top: 34px; text-align: center; color: #6d789a; font-size: 12px; }
+  footer a { color: #9db6f5; }
+  .warn {
+    margin-bottom: 24px; padding: 12px 14px; font-size: 12.5px;
+    border: 1px solid rgba(251,146,60,.3); border-radius: 10px;
+    background: rgba(251,146,60,.07); color: #fbbf7a;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="badge">pure Python &middot; AAMVA</span>
+    <h1>Barcode &amp; Magstripe Decoder</h1>
+    <p>Paste raw AAMVA data from a PDF417 barcode or driver's license magstripe to decode it into readable fields. Powered by the <a href="https://github.com/samuelmarks222/BARCODE-GENERATOR" style="color:#9db6f5">py-aamva</a> library.</p>
+  </header>
+
+  <div class="warn">
+    Use of machine-readable identity data is subject to 18 U.S.C. chapter 123. Only decode cards you are authorized to read, and do not build databases from them without the holder's written permission.
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Input</h2>
+      <textarea id="data" spellcheck="false" placeholder="Paste the raw string here, e.g. starts with  @&#10; ANSI ... for PDF417 or %XX... for magstripe"></textarea>
+      <div class="samples" id="samples"></div>
+      <div class="row">
+        <label for="format">Format</label>
+        <select id="format">
+          <option value="auto">Auto-detect</option>
+          <option value="barcode">PDF417 barcode</option>
+          <option value="magstripe">Magstripe</option>
+        </select>
+        <button class="primary" id="decode">Decode</button>
+        <button class="ghost" id="clear" type="button">Clear</button>
+      </div>
+      <p class="hint">POST endpoint: <code>/api/decode</code> with <code>{"data": "...", "format": "auto"}</code></p>
+      <div class="error" id="error"></div>
+    </section>
+
+    <section class="card result" id="result">
+      <div class="result-head">
+        <h2>Decoded</h2>
+        <button class="ghost" id="copy" type="button">Copy JSON</button>
+      </div>
+      <div id="groups"></div>
+      <details>
+        <summary>Raw JSON</summary>
+        <pre id="json"></pre>
+      </details>
+    </section>
+  </div>
+
+  <footer>py-aamva &middot; GPLv2 &middot; <a href="https://github.com/samuelmarks222/BARCODE-GENERATOR">source on GitHub</a></footer>
+</div>
+
+<script>
+const SAMPLES = {
+  "Virginia (PDF417)": "@\n\x1e\rANSI 636000030001DL00310440DLDCANONE\nDCB158X9     \nDCDS    \nDBA08142017\nDCSMAURY                                   \nDCTJUSTIN,WILLIAM                                                                  \nDBD08142009\nDBB07151958\nDBC1\nDAYBRO\nDAU075 in\nDAG17 FIRST STREET                    \nDAISTAUNTON            \nDAJVA\nDAK244010000  \nDAQT16700185                \nDCF061234567                \nDCGUSA\nDCHS   \nDDC00000000\nDDB12102008\nDDDN\nDDAN\nDCK9060600000017843         \n\r\r\n",
+  "Georgia (PDF417)": "@\n\x1e\rANSI 636055060002DL00410288ZG03290093DLDCAC\nDCBB\nDCDNONE\nDBA07012017\nDCSSAMPLE\nDDEU\nDACJANICE\nDDFU\nDADNONE\nDDGU\nDBD07012012\nDBB07011957\nDBC2\nDAYBLU\nDAU064 in\nDAG123 MAIN STREET\nDAIANYTOWN\nDAJGA\nDAK303341234  \nDAQ123456789\nDAW120\nDCF1234509876543210987654321\nDCGUSA\nDCUNONE\nDCK1234567890123456789012345\nDDAF\nDDB01302012\nDDK1\n\rZGZGAN\nZGBN\nZGC5-04\nZGDROCKDALE\nZGEN\nZGFABC123456789-1234567\nZGG12345-67891234567ABC\nZGH000\n\r\r\n",
+  "New York (PDF417, 2013)": "@\n\x1e\rANSI 636001070002DL00410392ZN04330047DLDCANONE  \nDCBNONE        \nDCDNONE \nDBA08312013\nDCSMichael                                 \nDACM                                       \nDADMotorist                                \nDBD08312013\nDBB08312013\nDBC1\nDAYBRO\nDAU064 in\nDAG2345 ANYWHERE STREET               \nDAIYOUR CITY           \nDAJNY\nDAK123450000  \nDAQNONE                     \nDCFNONE                     \nDCGUSA\nDDEN\nDDFN\nDDGN\n\rZNZNAMDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5\n\r\r\n",
+  "Texas (magstripe)": "%TXAUSTIN^DOE$JOHN^12345 SHERBOURNE ST^?;63601538774194=150819810101?#\" 78729      C               1505130BLKBLK?"
+};
+
+const GROUPS = [
+  ["Document", ["state", "country", "IIN", "license_number", "document", "card_type", "class", "restrictions", "endorsements", "version", "standards"]],
+  ["Personal", ["first", "middle", "last", "suffix", "prefix", "sex", "dob"]],
+  ["Physical", ["height", "weight", "eyes", "hair"]],
+  ["Address", ["address", "address2", "city", "state", "ZIP"]],
+  ["Dates", ["issued", "expiry"]],
+];
+
+const LABELS = {
+  state: "State / jurisdiction", country: "Country", IIN: "Issuer ID (IIN)",
+  license_number: "License number", document: "Document number", card_type: "Card type",
+  class: "Class", restrictions: "Restrictions", endorsements: "Endorsements",
+  version: "AAMVA version", standards: "Standards compliant",
+  first: "First name", middle: "Middle name", last: "Last name",
+  suffix: "Suffix", prefix: "Prefix", sex: "Sex", dob: "Date of birth",
+  height: "Height", weight: "Weight", eyes: "Eyes", hair: "Hair",
+  address: "Address", address2: "Address 2", city: "City", ZIP: "ZIP / postal code",
+  issued: "Issued", expiry: "Expires", units: "Units", warnings: "Warnings",
+  arrival_dates: "Arrival dates",
+};
+
+const SEX = { M: "Male", F: "Female", X: "Not specified" };
+
+const $ = (id) => document.getElementById(id);
+const errorBox = $("error");
+const resultBox = $("result");
+
+function labelFor(key) {
+  return LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function displayValue(key, value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (Array.isArray(value)) return value.length ? value.join(", ") : null;
+  if (typeof value === "object") {
+    if (value.type === "height" || value.type === "weight") return value.display;
+    return Object.keys(value).length ? JSON.stringify(value) : null;
+  }
+  if (key === "sex" && SEX[value]) return SEX[value] + " (" + value + ")";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
+function render(decoded) {
+  const groups = $("groups");
+  groups.innerHTML = "";
+  const used = new Set();
+
+  GROUPS.forEach(([title, keys]) => {
+    const rows = keys.filter((k) => k in decoded && !used.has(k));
+    const rendered = [];
+    rows.forEach((key) => {
+      used.add(key);
+      const value = displayValue(key, decoded[key]);
+      if (value !== null) rendered.push([key, value]);
+    });
+    if (!rendered.length) return;
+    const section = document.createElement("div");
+    section.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = title;
+    const dl = document.createElement("dl");
+    rendered.forEach(([key, value]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = labelFor(key);
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.append(dt, dd);
+    });
+    section.append(h, dl);
+    groups.append(section);
+  });
+
+  const extras = Object.keys(decoded).filter((k) => !used.has(k));
+  const rendered = [];
+  extras.forEach((key) => {
+    const value = displayValue(key, decoded[key]);
+    if (value !== null) rendered.push([key, value]);
+  });
+  if (rendered.length) {
+    const section = document.createElement("div");
+    section.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = "Other";
+    const dl = document.createElement("dl");
+    rendered.forEach(([key, value]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = labelFor(key);
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.append(dt, dd);
+    });
+    section.append(h, dl);
+    groups.append(section);
+  }
+
+  $("json").textContent = JSON.stringify(decoded, null, 2);
+  resultBox.style.display = "block";
+}
+
+function showError(message) {
+  errorBox.textContent = message;
+  errorBox.style.display = "block";
+  resultBox.style.display = "none";
+}
+
+function clearError() {
+  errorBox.style.display = "none";
+  errorBox.textContent = "";
+}
+
+async function decode() {
+  const data = $("data").value;
+  if (!data.trim()) return showError("Paste some AAMVA data first.");
+  clearError();
+  const button = $("decode");
+  button.disabled = true;
+  button.textContent = "Decoding...";
+  try {
+    const response = await fetch("/api/decode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data, format: $("format").value }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Request failed (" + response.status + ")");
+    render(payload.decoded);
+  } catch (err) {
+    showError(err.message || String(err));
+  } finally {
+    button.disabled = false;
+    button.textContent = "Decode";
+  }
+}
+
+const samples = $("samples");
+Object.keys(SAMPLES).forEach((name) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost";
+  button.textContent = name;
+  button.addEventListener("click", () => {
+    $("data").value = SAMPLES[name];
+    clearError();
+    decode();
+  });
+  samples.append(button);
+});
+
+$("decode").addEventListener("click", decode);
+$("clear").addEventListener("click", () => {
+  $("data").value = "";
+  clearError();
+  resultBox.style.display = "none";
+  $("data").focus();
+});
+$("copy").addEventListener("click", async () => {
+  const text = $("json").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    const button = $("copy");
+    button.textContent = "Copied";
+    setTimeout(() => (button.textContent = "Copy JSON"), 1400);
+  } catch (_) {
+    showError("Clipboard access was blocked by the browser.");
+  }
+});
+</script>
+</body>
+</html>
