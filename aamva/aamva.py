@@ -1397,9 +1397,13 @@ class AAMVA:
         country = fields["DCG"]  # USA or CAN
 
         # 2016 e, f, g, are required name fields
-        lastname = fields["DCS"].strip()  # (REQUIRED 2016 e)
-        firstname = fields["DAC"].strip()  # (REQUIRED 2016 f)
-        middlename = fields["DAD"].strip()  # (REQUIRED 2016 g)
+        lastname = fields.get("DCS", "").strip()  # (REQUIRED 2016 e)
+        firstname = fields.get("DAC", "").strip()  # (REQUIRED 2016 f)
+        middlename = fields.get("DAD", "").strip()  # (REQUIRED 2016 g)
+        if not lastname:
+            warnings.append("Missing last name (DCS)")
+        if not firstname:
+            warnings.append("Missing first name (DAC)")
 
         # 2016 t, u, and v indicate if names are truncated:
         if fields.get("DDE") == "T":
