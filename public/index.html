@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>py-aamva decoder</title>
-<meta name="description" content="Decode AAMVA-compliant driver's licenses and ID cards from PDF417 barcode or magstripe data.">
+<title>py-aamva decoder & generator</title>
+<meta name="description" content="Decode and generate AAMVA-compliant driver's licenses and ID cards from PDF417 barcode or magstripe data.">
 <style>
   :root {
     --bg: #0b1020;
@@ -41,6 +41,17 @@
   }
   h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 42px); letter-spacing: -.02em; }
   header p { margin: 0 auto; max-width: 640px; color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; justify-content: center; }
+  .tab {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--muted); padding: 10px 18px; border-radius: 10px;
+    font: inherit; cursor: pointer; transition: .16s ease;
+  }
+  .tab:hover { border-color: #3a486b; color: var(--text); }
+  .tab.active { background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent; color: #08101f; font-weight: 700; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
   .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
   @media (min-width: 900px) { .grid { grid-template-columns: 1.05fr .95fr; } }
   .card {
@@ -49,16 +60,19 @@
     padding: 20px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
   }
   .card h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
-  textarea {
-    width: 100%; min-height: 220px; resize: vertical;
-    background: var(--panel-2); color: var(--text);
+  textarea, input, select {
+    width: 100%; background: var(--panel-2); color: var(--text);
     border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
     outline: none;
   }
-  textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(110,168,254,.15); }
+  textarea { min-height: 180px; resize: vertical; }
+  input, select { height: 44px; }
+  textarea:focus, input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(110,168,254,.15); }
   .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
-  label { color: var(--muted); font-size: 13px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .row-2 { grid-template-columns: 1fr; } }
+  label { color: var(--muted); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
   select, button {
     font: inherit; color: var(--text); border-radius: 9px;
     border: 1px solid var(--border); background: var(--panel-2);
@@ -102,6 +116,8 @@
     background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
     font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #c7d2ea;
   }
+  .barcode-preview { text-align: center; margin-top: 16px; }
+  .barcode-preview img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); background: white; }
   footer { margin-top: 34px; text-align: center; color: #6d789a; font-size: 12px; }
   footer a { color: #9db6f5; }
   .warn {
@@ -115,45 +131,136 @@
 <div class="wrap">
   <header>
     <span class="badge">pure Python &middot; AAMVA</span>
-    <h1>Barcode &amp; Magstripe Decoder</h1>
-    <p>Paste raw AAMVA data from a PDF417 barcode or driver's license magstripe to decode it into readable fields. Powered by the <a href="https://github.com/samuelmarks222/BARCODE-GENERATOR" style="color:#9db6f5">py-aamva</a> library.</p>
+    <h1>Barcode & Magstripe Toolkit</h1>
+    <p>Decode or generate AAMVA PDF417 barcodes and magstripe data. Powered by <a href="https://github.com/samuelmarks222/BARCODE-GENERATOR" style="color:#9db6f5">py-aamva</a>.</p>
   </header>
 
   <div class="warn">
-    Use of machine-readable identity data is subject to 18 U.S.C. chapter 123. Only decode cards you are authorized to read, and do not build databases from them without the holder's written permission.
+    Use of machine-readable identity data is subject to 18 U.S.C. chapter 123. Only process cards you are authorized to read, and do not build databases from them without the holder's written permission.
   </div>
 
-  <div class="grid">
-    <section class="card">
-      <h2>Input</h2>
-      <textarea id="data" spellcheck="false" placeholder="Paste the raw string here, e.g. starts with  @&#10; ANSI ... for PDF417 or %XX... for magstripe"></textarea>
-      <div class="samples" id="samples"></div>
-      <div class="row">
-        <label for="format">Format</label>
-        <select id="format">
-          <option value="auto">Auto-detect</option>
-          <option value="barcode">PDF417 barcode</option>
-          <option value="magstripe">Magstripe</option>
-        </select>
-        <button class="primary" id="decode">Decode</button>
-        <button class="ghost" id="clear" type="button">Clear</button>
-      </div>
-      <p class="hint">POST endpoint: <code>/api/decode</code> with <code>{"data": "...", "format": "auto"}</code></p>
-      <div class="error" id="error"></div>
-    </section>
-
-    <section class="card result" id="result">
-      <div class="result-head">
-        <h2>Decoded</h2>
-        <button class="ghost" id="copy" type="button">Copy JSON</button>
-      </div>
-      <div id="groups"></div>
-      <details>
-        <summary>Raw JSON</summary>
-        <pre id="json"></pre>
-      </details>
-    </section>
+  <div class="tabs" role="tablist">
+    <button class="tab active" role="tab" aria-selected="true" data-tab="decode">Decode</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="generate">Generate</button>
   </div>
+
+  <!-- DECODE TAB -->
+  <section class="tab-panel active" id="decode-panel" role="tabpanel">
+    <div class="grid">
+      <section class="card">
+        <h2>Input</h2>
+        <textarea id="data" spellcheck="false" placeholder="Paste the raw string here, e.g. starts with  @&#10; ANSI ... for PDF417 or %XX... for magstripe"></textarea>
+        <div class="samples" id="samples"></div>
+        <div class="row">
+          <label for="format">Format</label>
+          <select id="format">
+            <option value="auto">Auto-detect</option>
+            <option value="barcode">PDF417 barcode</option>
+            <option value="magstripe">Magstripe</option>
+          </select>
+          <button class="primary" id="decode">Decode</button>
+          <button class="ghost" id="clear" type="button">Clear</button>
+        </div>
+        <p class="hint">POST endpoint: <code>/api/decode</code> with <code>{"data": "...", "format": "auto"}</code></p>
+        <div class="error" id="error"></div>
+      </section>
+
+      <section class="card result" id="result">
+        <div class="result-head">
+          <h2>Decoded</h2>
+          <button class="ghost" id="copy" type="button">Copy JSON</button>
+        </div>
+        <div id="groups"></div>
+        <details>
+          <summary>Raw JSON</summary>
+          <pre id="json"></pre>
+        </details>
+      </section>
+    </div>
+  </section>
+
+  <!-- GENERATE TAB -->
+  <section class="tab-panel" id="generate-panel" role="tabpanel">
+    <div class="grid">
+      <section class="card">
+        <h2>Generate PDF417</h2>
+        <p class="hint" style="margin-top:0">Enter AAMVA fields or paste a full raw string. Click <strong>Generate</strong> to create a barcode image.</p>
+        <div class="row-2">
+          <label>IIN (issuer)<input type="text" id="gen-iin" placeholder="636046" maxlength="6"></label>
+          <label>Version<input type="text" id="gen-ver" placeholder="9" maxlength="2"></label>
+        </div>
+        <div class="row-2">
+          <label>State<input type="text" id="gen-state" placeholder="KY" maxlength="2"></label>
+          <label>ZIP<input type="text" id="gen-zip" placeholder="40201"></label>
+        </div>
+        <div class="row-2">
+          <label>Last name<input type="text" id="gen-last" placeholder="DOE"></label>
+          <label>First name<input type="text" id="gen-first" placeholder="JOHN"></label>
+        </div>
+        <div class="row-2">
+          <label>Middle name<input type="text" id="gen-middle" placeholder=""></label>
+          <label>DOB (YYYYMMDD)<input type="text" id="gen-dob" placeholder="19800101"></label>
+        </div>
+        <div class="row-2">
+          <label>Sex (M/F/X)<input type="text" id="gen-sex" placeholder="M" maxlength="1"></label>
+          <label>Height (in or cm)<input type="text" id="gen-height" placeholder="71 in"></label>
+        </div>
+        <div class="row-2">
+          <label>Weight (lbs/kg)<input type="text" id="gen-weight" placeholder="180"></label>
+          <label>Eyes<input type="text" id="gen-eyes" placeholder="BRO"></label>
+        </div>
+        <div class="row-2">
+          <label>Hair<input type="text" id="gen-hair" placeholder="BLK"></label>
+          <label>Address<input type="text" id="gen-addr" placeholder="123 MAIN ST"></label>
+        </div>
+        <div class="row-2">
+          <label>City<input type="text" id="gen-city" placeholder="LOUISVILLE"></label>
+          <label>Expiry (YYYYMMDD)<input type="text" id="gen-exp" placeholder="20300101"></label>
+        </div>
+        <div class="row-2">
+          <label>Issued (YYYYMMDD)<input type="text" id="gen-iss" placeholder="20200101"></label>
+          <label>License #<input type="text" id="gen-lic" placeholder="D12345678"></label>
+        </div>
+        <div class="row-2">
+          <label>Document #<input type="text" id="gen-doc" placeholder="0123456789"></label>
+          <label>Class<input type="text" id="gen-class" placeholder="D"></label>
+        </div>
+        <div class="row-2">
+          <label>Restrictions<input type="text" id="gen-rest" placeholder=""></label>
+          <label>Endorsements<input type="text" id="gen-end" placeholder=""></label>
+        </div>
+        <div class="row" style="margin-top:16px">
+          <label for="gen-raw">Or paste full raw AAMVA string</label>
+          <textarea id="gen-raw" style="min-height:100px" placeholder="@\n\x1e\rANSI ..."></textarea>
+        </div>
+        <div class="row">
+          <label for="gen-cols">Columns</label>
+          <select id="gen-cols"><option value="6">6</option><option value="5">5</option><option value="4">4</option><option value="7">7</option></select>
+          <label for="gen-sec">Security level</label>
+          <select id="gen-sec"><option value="2">2</option><option value="3">3</option><option value="1">1</option></select>
+          <label for="gen-scale">Scale</label>
+          <select id="gen-scale"><option value="3">3</option><option value="4">4</option><option value="2">2</option></select>
+          <button class="primary" id="generate">Generate</button>
+          <button class="ghost" id="gen-clear" type="button">Clear</button>
+        </div>
+        <p class="hint">POST endpoint: <code>/api/generate</code> with AAMVA fields or <code>"data"</code> string.</p>
+        <div class="error" id="gen-error"></div>
+      </section>
+
+      <section class="card result" id="gen-result" style="display:none">
+        <div class="result-head"><h2>Barcode</h2></div>
+        <div class="barcode-preview" id="barcode-preview"></div>
+        <div class="row" style="margin-top:12px; justify-content:center">
+          <button class="ghost" id="download-png">Download PNG</button>
+          <button class="ghost" id="copy-b64">Copy base64</button>
+        </div>
+        <details style="margin-top:16px">
+          <summary>Raw AAMVA used</summary>
+          <pre id="gen-used-raw"></pre>
+        </details>
+      </section>
+    </div>
+  </section>
 
   <footer>py-aamva &middot; GPLv2 &middot; <a href="https://github.com/samuelmarks222/BARCODE-GENERATOR">source on GitHub</a></footer>
 </div>
@@ -190,8 +297,6 @@ const LABELS = {
 const SEX = { M: "Male", F: "Female", X: "Not specified" };
 
 const $ = (id) => document.getElementById(id);
-const errorBox = $("error");
-const resultBox = $("result");
 
 function labelFor(key) {
   return LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -263,24 +368,42 @@ function render(decoded) {
   }
 
   $("json").textContent = JSON.stringify(decoded, null, 2);
-  resultBox.style.display = "block";
+  $("result").style.display = "block";
 }
 
-function showError(message) {
-  errorBox.textContent = message;
-  errorBox.style.display = "block";
-  resultBox.style.display = "none";
+function showError(id, message) {
+  const box = $(id);
+  box.textContent = message;
+  box.style.display = "block";
+  if (id === "error") $("result").style.display = "none";
+  else $("gen-result").style.display = "none";
 }
 
-function clearError() {
-  errorBox.style.display = "none";
-  errorBox.textContent = "";
+function clearError(id) {
+  const box = $(id);
+  box.style.display = "none";
+  box.textContent = "";
 }
 
+// Tab switching
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.classList.remove("active");
+      t.setAttribute("aria-selected", "false");
+    });
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    tab.setAttribute("aria-selected", "true");
+    $(tab.dataset.tab + "-panel").classList.add("active");
+  });
+});
+
+// Decode logic
 async function decode() {
   const data = $("data").value;
-  if (!data.trim()) return showError("Paste some AAMVA data first.");
-  clearError();
+  if (!data.trim()) return showError("error", "Paste some AAMVA data first.");
+  clearError("error");
   const button = $("decode");
   button.disabled = true;
   button.textContent = "Decoding...";
@@ -294,7 +417,7 @@ async function decode() {
     if (!response.ok) throw new Error(payload.error || "Request failed (" + response.status + ")");
     render(payload.decoded);
   } catch (err) {
-    showError(err.message || String(err));
+    showError("error", err.message || String(err));
   } finally {
     button.disabled = false;
     button.textContent = "Decode";
@@ -309,7 +432,7 @@ Object.keys(SAMPLES).forEach((name) => {
   button.textContent = name;
   button.addEventListener("click", () => {
     $("data").value = SAMPLES[name];
-    clearError();
+    clearError("error");
     decode();
   });
   samples.append(button);
@@ -318,8 +441,8 @@ Object.keys(SAMPLES).forEach((name) => {
 $("decode").addEventListener("click", decode);
 $("clear").addEventListener("click", () => {
   $("data").value = "";
-  clearError();
-  resultBox.style.display = "none";
+  clearError("error");
+  $("result").style.display = "none";
   $("data").focus();
 });
 $("copy").addEventListener("click", async () => {
@@ -330,7 +453,138 @@ $("copy").addEventListener("click", async () => {
     button.textContent = "Copied";
     setTimeout(() => (button.textContent = "Copy JSON"), 1400);
   } catch (_) {
-    showError("Clipboard access was blocked by the browser.");
+    showError("error", "Clipboard access was blocked by the browser.");
+  }
+});
+
+// Generate logic
+function buildRawFromFields() {
+  const parts = [];
+  const add = (code, val) => { if (val !== undefined && val !== "" && val !== null) parts.push(code + val); };
+  const raw = $("gen-raw").value.trim();
+  if (raw) return raw;
+
+  // Build a minimal AAMVA string from fields (approximate)
+  const iin = $("gen-iin").value.trim() || "636000";
+  const ver = ($("gen-ver").value.trim() || "9").padStart(2, "0");
+  const state = ($("gen-state").value.trim() || "XX").toUpperCase().padEnd(2, " ");
+  const zip = ($("gen-zip").value.trim() || "00000").padEnd(11, " ");
+  const last = ($("gen-last").value.trim() || "LAST").toUpperCase();
+  const first = ($("gen-first").value.trim() || "FIRST").toUpperCase();
+  const middle = ($("gen-middle").value.trim() || "").toUpperCase();
+  const dob = ($("gen-dob").value.trim() || "19800101").padStart(8, "0");
+  const sex = ($("gen-sex").value.trim().toUpperCase() || "M")[0];
+  const height = ($("gen-height").value.trim() || "70 in").toLowerCase();
+  const weight = ($("gen-weight").value.trim() || "180");
+  const eyes = ($("gen-eyes").value.trim().toUpperCase() || "BRO").padEnd(3, " ");
+  const hair = ($("gen-hair").value.trim().toUpperCase() || "BLK").padEnd(3, " ");
+  const addr = ($("gen-addr").value.trim() || "123 MAIN ST").toUpperCase();
+  const city = ($("gen-city").value.trim() || "CITY").toUpperCase();
+  const exp = ($("gen-exp").value.trim() || "20300101").padStart(8, "0");
+  const iss = ($("gen-iss").value.trim() || "20200101").padStart(8, "0");
+  const lic = ($("gen-lic").value.trim() || "LIC123").toUpperCase();
+  const doc = ($("gen-doc").value.trim() || "DOC123").toUpperCase();
+  const cls = ($("gen-class").value.trim() || "D").toUpperCase();
+  const rest = ($("gen-rest").value.trim() || "").toUpperCase();
+  const end = ($("gen-end").value.trim() || "").toUpperCase();
+
+  // Build a minimal compliant v9 string (simplified)
+  const today = new Date();
+  const now = today.toISOString().replace(/[-:]/g, "").split(".")[0];
+  const ansi = "ANSI " + iin + ver + "00DL" + now.slice(0, 8) + "Z" + state + "DL";
+  // Subfile fields
+  const sub = [
+    "DCS" + last,
+    "DAC" + first,
+    middle ? "DAD" + middle : "",
+    "DBD" + iss,
+    "DBB" + dob,
+    "DBA" + exp,
+    "DBC" + sex,
+    "DAY" + eyes,
+    "DAU" + height,
+    "DAG" + addr,
+    "DAI" + city,
+    "DAJ" + state,
+    "DAK" + zip,
+    "DAQ" + lic,
+    "DCF" + doc,
+    "DCGUSA",
+    "DCA" + cls,
+    "DCB" + rest,
+    "DCD" + end,
+  ].filter(Boolean).join("\n");
+  return "@\n\x1e\r" + ansi + "\n" + sub + "\n\r\r\n";
+}
+
+async function generate() {
+  clearError("gen-error");
+  const raw = buildRawFromFields();
+  if (!raw.trim()) return showError("gen-error", "No data to encode.");
+  const button = $("generate");
+  button.disabled = true;
+  button.textContent = "Generating...";
+  try {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: raw,
+        columns: parseInt($("gen-cols").value, 10),
+        security_level: parseInt($("gen-sec").value, 10),
+        scale: parseInt($("gen-scale").value, 10),
+        ratio: 3,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Request failed (" + response.status + ")");
+
+    const img = document.createElement("img");
+    img.src = "data:image/png;base64," + payload.data;
+    img.alt = "Generated PDF417 barcode";
+    const preview = $("barcode-preview");
+    preview.innerHTML = "";
+    preview.appendChild(img);
+    $("gen-used-raw").textContent = raw;
+    $("gen-result").style.display = "block";
+
+    // Store for download
+    window.lastBarcode = { b64: payload.data, raw };
+  } catch (err) {
+    showError("gen-error", err.message || String(err));
+  } finally {
+    button.disabled = false;
+    button.textContent = "Generate";
+  }
+}
+
+$("generate").addEventListener("click", generate);
+$("gen-clear").addEventListener("click", () => {
+  ["gen-iin","gen-ver","gen-state","gen-zip","gen-last","gen-first","gen-middle","gen-dob",
+   "gen-sex","gen-height","gen-weight","gen-eyes","gen-hair","gen-addr","gen-city",
+   "gen-exp","gen-iss","gen-lic","gen-doc","gen-class","gen-rest","gen-end","gen-raw"]
+    .forEach((id) => $(id).value = "");
+  clearError("gen-error");
+  $("gen-result").style.display = "none";
+});
+
+$("download-png").addEventListener("click", () => {
+  if (!window.lastBarcode) return;
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + window.lastBarcode.b64;
+  a.download = "aamva-barcode.png";
+  a.click();
+});
+
+$("copy-b64").addEventListener("click", async () => {
+  if (!window.lastBarcode) return;
+  try {
+    await navigator.clipboard.writeText(window.lastBarcode.b64);
+    const btn = $("copy-b64");
+    btn.textContent = "Copied";
+    setTimeout(() => (btn.textContent = "Copy base64"), 1400);
+  } catch (_) {
+    showError("gen-error", "Clipboard access was blocked by the browser.");
   }
 });
 </script>
