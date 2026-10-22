@@ -1,7 +1,6 @@
-"""Vercel serverless function: generate PDF417 barcode from AAMVA data."""
+"""Vercel serverless function: generate compliant AAMVA PDF417 barcode."""
 
 import base64
-import io
 import json
 import os
 import sys
@@ -12,19 +11,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 try:
-    import pdf417gen
+    from aamva.encode import build_aamva_string, encode_to_png
 except Exception:  # pragma: no cover - dependency not installed locally
-    pdf417gen = None
+    build_aamva_string = None
+    encode_to_png = None
 
 MAX_INPUT = 20000
-
-
-def serialize(value):
-    if isinstance(value, (list, tuple)):
-        return [serialize(v) for v in value]
-    if isinstance(value, dict):
-        return {str(k): serialize(v) for k, v in value.items()}
-    return value
 
 
 class handler(BaseHTTPRequestHandler):
@@ -68,8 +60,8 @@ class handler(BaseHTTPRequestHandler):
             self._send(413, {"error": "Request body too large."})
             return
 
-        if pdf417gen is None:
-            self._send(500, {"error": "pdf417gen not installed."})
+        if build_aamva_string is None or encode_to_png is None:
+            self._send(500, {"error": "Encoder not available (missing pdf417gen)."})
             return
 
         try:
@@ -85,47 +77,36 @@ class handler(BaseHTTPRequestHandler):
         # Accept either raw "data" string or structured fields
         data = body.get("data")
         if not isinstance(data, str) or not data.strip():
-            # Build AAMVA string from structured fields (minimal)
-            data = self._build_aamva_string(body)
+            # Build compliant AAMVA string from structured fields
+            data = build_aamva_string(**body)
 
         if len(data) > MAX_INPUT:
             self._send(413, {"error": "Input data too large."})
             return
 
         try:
-            # pdf417gen expects the raw AAMVA string
             columns = int(body.get("columns", 6))
             security = int(body.get("security_level", 2))
             scale = int(body.get("scale", 3))
             ratio = int(body.get("ratio", 3))
 
-            codes = pdf417gen.encode(data, columns=columns, security_level=security)
-            img = pdf417gen.render_image(codes, scale=scale, ratio=ratio)
+            png_bytes = encode_to_png(data, columns=columns, security_level=security, scale=scale, ratio=ratio)
+            b64 = base64.b64encode(png_bytes).decode("ascii")
 
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            # For response metadata, we'd need image dimensions; decode from base64 PNG
+            import io
+            from PIL import Image
+            img = Image.open(io.BytesIO(png_bytes))
+            width, height = img.size
 
             self._send(
                 200,
                 {
                     "format": "png",
                     "data": b64,
-                    "width": img.width,
-                    "height": img.height,
+                    "width": width,
+                    "height": height,
                 },
             )
         except Exception as exc:  # noqa: BLE001
             self._send(422, {"error": "%s: %s" % (type(exc).__name__, exc)})
-
-    @staticmethod
-    def _build_aamva_string(fields):
-        """Very small helper: build a minimal AAMVA string from common fields.
-        This is a stub; real generation needs full AAMVA formatting.
-        """
-        # For now just join known field codes
-        lines = []
-        for k, v in fields.items():
-            if v is not None and v != "":
-                lines.append(f"{k}{v}")
-        return "\n".join(lines)
