@@ -21,6 +21,35 @@ FORMATS = {
 }
 
 
+def normalize(raw):
+    """Repair control characters that browsers/scanners commonly mangle.
+
+    Textareas normalise CR to LF, which breaks the AAMVA header (the segment
+    terminator after the record separator must be a carriage return). Some
+    scanners also drop the non-printable separators entirely.
+    """
+    data = raw.strip("\ufeff \t\r\n")
+    at = data.find("@")
+    if at > 0:
+        data = data[at:]
+
+    if data.startswith("@ANSI "):
+        data = "@\n\x1e\r" + data[1:]
+    elif data.startswith("@\nANSI "):
+        data = data[:2] + "\x1e\r" + data[2:]
+
+    if (
+        len(data) > 3
+        and data[0] == "@"
+        and data[1] == "\n"
+        and data[2] == "\x1e"
+        and data[3] != "\r"
+    ):
+        data = data[:3] + "\r" + data[4:]
+
+    return data
+
+
 def serialize(value):
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
@@ -106,10 +135,24 @@ class handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "Field 'format' must be auto, barcode or magstripe."})
             return
 
-        try:
-            decoded = aamva.AAMVA(format=FORMATS[fmt]).decode(data)
-        except Exception as exc:  # noqa: BLE001 - surface parse errors to the client
-            self._send(422, {"error": "%s: %s" % (type(exc).__name__, exc)})
+        # Try the original data first; if it fails, try a normalized version
+        candidates = [data]
+        norm = normalize(data)
+        if norm != data:
+            candidates.append(norm)
+
+        decoded = None
+        last_exc = None
+        for candidate in candidates:
+            try:
+                decoded = aamva.AAMVA(format=FORMATS[fmt]).decode(candidate)
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                continue
+
+        if decoded is None:
+            self._send(422, {"error": "%s: %s" % (type(last_exc).__name__, last_exc)})
             return
 
         self._send(200, {"format": fmt, "decoded": serialize(decoded)})

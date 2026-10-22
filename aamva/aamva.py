@@ -204,9 +204,9 @@ class AAMVA:
                 # ~ return self.decode_barcode(data)
                 try:
                     return self.decode_barcode(data)
-                except (IndexError, AssertionError, ReadError) as e:
+                except (IndexError, AssertionError, KeyError, ValueError, TypeError, ReadError) as e:
                     log(e)
-                    raise ReadError("Unable to decode as barcode")
+                    raise ReadError("Unable to decode as barcode: %s" % e)
 
     def decode_magstripe(self, data):
         fields = data.split("^")  # split the field seperators
@@ -407,7 +407,7 @@ class AAMVA:
                 log("=== End Subfile ===")
                 read_offset += 10
 
-        elif version in (2, 3, 4, 5, 6, 7, 8, 9):
+        elif version in (2, 3, 4, 5, 6, 7, 8, 9, 10):
             # version 2 and later add a jurisdiction field
             jurisdiction_version = data[17:19]
             assert (
@@ -469,6 +469,10 @@ class AAMVA:
                 decode_function = self._decode_barcode_v8
             if version == 9:
                 decode_function = self._decode_barcode_v9
+            if version == 10:
+                # 2020 standard is a superset of 2016; the v9 decoder
+                # handles the shared mandatory fields.
+                decode_function = self._decode_barcode_v9
 
         # Seperate out subfiles, removing trailing empty list
         parsed_data = "\n".join(subfiles_raw)
@@ -491,11 +495,13 @@ class AAMVA:
         fields = dict((key[0:3], key[3:].strip()) for key in subfile)
 
         try:
-            return decode_function(fields, issue_identifier)
+            result = decode_function(fields, issue_identifier)
         except UnboundLocalError:
-            raise NotImplemented(
+            raise NotImplementedError(
                 "ERROR: Version {0} decoding not implemented!".format(version)
             )
+        result["version"] = version
+        return result
 
     def _decode_barcode_v0(self, data):
         """Decodes a version 0 barcode specification (prior to 2000)"""
@@ -1396,11 +1402,11 @@ class AAMVA:
         middlename = fields["DAD"].strip()  # (REQUIRED 2016 g)
 
         # 2016 t, u, and v indicate if names are truncated:
-        if fields["DDE"] == "T":
+        if fields.get("DDE") == "T":
             lastname += "…"
-        if fields["DDF"] == "T":
+        if fields.get("DDF") == "T":
             firstname += "…"
-        if fields["DDG"] == "T":
+        if fields.get("DDG") == "T":
             middlename += "…"
 
         # convert dates
@@ -1426,30 +1432,38 @@ class AAMVA:
             card_type = IDENTITY_CARD
 
         # Physical description
-        sex = fields["DBC"]  # (REQUIRED 2016 j.)
-        assert sex in "129", "Invalid sex"
-        if sex == "1":
+        sex = fields.get("DBC", "").strip()  # (REQUIRED 2016 j.)
+        if sex not in ("1", "2", "9"):
+            warnings.append("Missing or unrecognized sex code: '{0}'".format(sex))
+            sex = None
+        elif sex == "1":
             sex = MALE
-        if sex == "2":
+        elif sex == "2":
             sex = FEMALE
-        if sex == "9":
+        else:
             sex = NOT_SPECIFIED
 
-        eyes = fields["DAY"]  # (REQUIRED 2016 k.)
-        assert eyes in EYECOLOURS, "Invalid eye colour: {0}".format(eyes)
+        eyes = fields.get("DAY", "").strip()  # (REQUIRED 2016 k.)
+        if eyes and eyes not in EYECOLOURS:
+            warnings.append("Unrecognized eye colour: '{0}'".format(eyes))
 
-        height = fields["DAU"]  # (REQUIRED 2016 l.)
-        if height[-2:].lower() == "in":  # inches
-            height = int(height[0:3])
-            units = IMPERIAL
-            height = Height(height, format="USA")
-        elif height[-2:].lower() == "cm":  # metric
-            height = int(height[0:3])
-            units = METRIC
-            height = Height(height)
-        else:
+        units = METRIC if country.upper() == "CAN" else IMPERIAL
+        height = None
+        height_raw = fields.get("DAU", "").strip()  # (REQUIRED 2016 l.)
+        try:
+            if height_raw[-2:].lower() == "in":  # inches
+                height = int(height_raw[0:3])
+                units = IMPERIAL
+                height = Height(height, format="USA")
+            elif height_raw[-2:].lower() == "cm":  # metric
+                height = int(height_raw[0:3])
+                units = METRIC
+                height = Height(height)
+            elif height_raw:
+                warnings.append("Unrecognized height format: '{0}'".format(height_raw))
+        except ValueError:
             height = None
-            #raise AssertionError("Invalid unit for height")
+            warnings.append("Unrecognized height format: '{0}'".format(height_raw))
 
         # 2016 m, n, o, p, are required address elements
 
@@ -1465,15 +1479,14 @@ class AAMVA:
             except KeyError:
                 weight = None
         if weight is None:
-            # Try weight range
-            try:
-                weight = fields["DCE"]
-                if units == METRIC:
-                    weight = Weight(int(weight), format="ISO")
-                elif units == IMPERIAL:
-                    weight = Weight(int(weight), format="USA")
-            except KeyError:
-                weight = None
+            # Try weight range (DCE in older versions, DDL since 2020)
+            for code in ("DCE", "DDL"):
+                if code in fields:
+                    try:
+                        weight = Weight(int(fields[code]), format=units)
+                        break
+                    except ValueError:
+                        continue
 
         # optional fields:
         address2 = None  # (OPTIONAL 2016 a.)
@@ -1482,8 +1495,9 @@ class AAMVA:
 
         hair = None  # (OPTIONAL 2016 b.)
         if "DAZ" in list(fields.keys()):
-            hair = fields["DAZ"]  # Optional
-            assert hair in HAIRCOLOURS, "Invalid hair colour: {0}".format(hair)
+            hair = fields["DAZ"].strip() or None  # Optional
+            if hair and hair not in HAIRCOLOURS:
+                warnings.append("Unrecognized hair colour: '{0}'".format(hair))
 
         # TODO: OPTIONAL 2013 fields c - h
 
